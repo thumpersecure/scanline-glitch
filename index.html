@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scanline Displacement Glitch Lab</title>
+<meta name="description" content="Interactive scanline / line-displacement glitch generator. Slice, displace, RGB-split and layer any image in the browser. Tune every parameter and export a PNG.">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Scanline Displacement Glitch Lab</h1>
+  <p class="sub">Horizontal line-displacement glitch — slice into strips, shift each strip by noise + a diagonal depth gradient, split RGB channels, then layer passes. Everything runs in your browser. <a href="#how">How it works ↓</a></p>
+</header>
+
+<main>
+  <div id="canvas-wrap"></div>
+
+  <section id="controls">
+    <div class="group">
+      <h2>Source</h2>
+      <label class="file">
+        <span>Upload image</span>
+        <input type="file" id="fileInput" accept="image/*">
+      </label>
+      <button id="genNoise" class="secondary">Generate noise source</button>
+      <p class="hint">No image? Generate a procedural source and glitch that.</p>
+    </div>
+
+    <div class="group">
+      <h2>Slicing</h2>
+      <label>Strip height <output id="stripOut">2</output> px
+        <input type="range" id="strip" min="1" max="16" step="1" value="2"></label>
+      <label>Displacement amount <output id="ampOut">40</output> px
+        <input type="range" id="amp" min="0" max="200" step="1" value="40"></label>
+      <label>Noise scale <output id="scaleOut">0.010</output>
+        <input type="range" id="scale" min="0.001" max="0.08" step="0.001" value="0.01"></label>
+    </div>
+
+    <div class="group">
+      <h2>Diagonal depth set</h2>
+      <label>Diagonal strength <output id="diagOut">0.6</output>
+        <input type="range" id="diag" min="0" max="1" step="0.01" value="0.6"></label>
+      <label>Diagonal angle <output id="angleOut">45</output>°
+        <input type="range" id="angle" min="-90" max="90" step="1" value="45"></label>
+    </div>
+
+    <div class="group">
+      <h2>RGB split (muted RBG lines)</h2>
+      <label>Channel offset <output id="rgbOut">6</output> px
+        <input type="range" id="rgb" min="0" max="40" step="1" value="6"></label>
+      <label>Channel spread <output id="spreadOut">1.0</output>
+        <input type="range" id="spread" min="0" max="3" step="0.1" value="1.0"></label>
+    </div>
+
+    <div class="group">
+      <h2>Layering</h2>
+      <label>Layers <output id="layersOut">3</output>
+        <input type="range" id="layers" min="1" max="4" step="1" value="3"></label>
+      <label>Layer scale (1 → 2×) <output id="lscaleOut">1.5</output>
+        <input type="range" id="lscale" min="1" max="2" step="0.05" value="1.5"></label>
+      <label>Layer opacity <output id="lopOut">0.5</output>
+        <input type="range" id="lop" min="0.1" max="1" step="0.05" value="0.5"></label>
+      <label>Blend mode
+        <select id="blend">
+          <option value="screen">screen</option>
+          <option value="lighter" selected>add / lighter</option>
+          <option value="difference">difference</option>
+          <option value="overlay">overlay</option>
+          <option value="multiply">multiply</option>
+        </select></label>
+    </div>
+
+    <div class="group">
+      <h2>Seed & output</h2>
+      <label>Seed <output id="seedOut">216</output>
+        <input type="range" id="seed" min="0" max="999" step="1" value="216"></label>
+      <div class="row">
+        <button id="reroll">Reroll seed 🎲</button>
+        <button id="reset" class="secondary">Reset</button>
+      </div>
+      <div class="row">
+        <button id="save" class="primary">Download PNG</button>
+      </div>
+      <label class="check"><input type="checkbox" id="animate"> Animate (evolve over time)</label>
+    </div>
+  </section>
+</main>
+
+<section id="how">
+  <h2>How this works</h2>
+  <ol>
+    <li><b>Slice</b> — the source is cut into thin horizontal strips (<i>strip height</i>).</li>
+    <li><b>Displace</b> — each strip shifts horizontally by <code>noise(y) × amount</code> plus a <b>diagonal depth gradient</b> so displacement ramps across the frame instead of jittering randomly.</li>
+    <li><b>RGB split</b> — the R, G and B channels are drawn at slightly different offsets per strip, giving the muted colour fringing.</li>
+    <li><b>Layer</b> — 1–4 passes are rendered at increasing scales (1→2×) and blended, producing the woven interference texture.</li>
+  </ol>
+  <p>Each <i>seed</i> is one “experiment.” Change parameters + seed to explore the space, then <b>Download PNG</b>. All processing is client-side — nothing is uploaded.</p>
+  <p class="repo"><a id="repolink" href="https://github.com/thumpersecure/scanline-glitch">Source on GitHub</a> · MIT licensed · built with <a href="https://p5js.org">p5.js</a></p>
+</section>
+
+<script src="sketch.js"></script>
+</body>
+</html>
