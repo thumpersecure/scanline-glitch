@@ -36,6 +36,15 @@ space, then download the frame.
 | Seed | reproducible randomness; reroll for a new experiment |
 | Animate | evolve the noise over time |
 
+## Recipes to try
+
+- **Classic VHS tear** — strip 2, amount 60, noise scale 0.02, diagonal 0.2, RGB 8, layers 2, blend `screen`.
+- **Diagonal depth sweep** ("Experiment 216") — strip 1, amount 40, diagonal 0.8 @ 45°, RGB 6, layers 3, scale 1.5, blend `add`.
+- **Woven interference** — strip 1, amount 30, layers 4, layer scale 1.8, opacity 0.4, blend `difference`.
+- **Subtle print fringe** — strip 3, amount 12, RGB 4, spread 2, layers 1.
+
+Reroll the **seed** on any recipe to get a new "experiment" with the same character.
+
 ## Run locally
 
 It's static — just serve the folder:

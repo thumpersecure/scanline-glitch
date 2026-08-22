@@ -81,6 +81,7 @@ function handleFile(e) {
   const url = URL.createObjectURL(file);
   loadImage(url, img => {
     srcImg = fitImage(img);
+    chanCache = null;   // invalidate stale channel buffers
     resizeToSource();
     URL.revokeObjectURL(url);
     render();
@@ -108,6 +109,7 @@ function makeNoiseSource() {
   }
   g.updatePixels();
   srcImg = g.get();
+  chanCache = null;   // invalidate stale channel buffers
   resizeToSource();
 }
 
@@ -128,7 +130,6 @@ function resizeToSource() {
 
 // Render one displaced pass into a graphics buffer.
 function glitchPass(pass, t) {
-  readParamsIfNeeded();
   const w = srcImg.width, h = srcImg.height;
   const g = createGraphics(w, h);
   g.pixelDensity(1);
@@ -196,9 +197,6 @@ function drawChannelStrip(g, y, sh, shift, which) {
   g.image(img, Math.round(shift) - w, y, w, sh, 0, y, w, sh);
   g.image(img, Math.round(shift) + w, y, w, sh, 0, y, w, sh);
 }
-
-let _paramsRead = false;
-function readParamsIfNeeded(){ if(!_paramsRead){ readParams(); _paramsRead=true; } }
 
 function render() {
   if (!srcImg) return;
