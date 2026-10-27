@@ -23,7 +23,7 @@
   var el = {};
   ['out', 'fileInput', 'genSource', 'levels', 'blend', 'reroll', 'reset', 'animate',
    'savePng', 'saveDepth', 'gifPreset', 'saveGif', 'gifCancel', 'gifProgress',
-   'gifInfo', 'status', 'dropzone'].forEach(function (id) { el[id] = $(id); });
+   'gifInfo', 'status', 'dropzone', 'reveal', 'tilt', 'invertDepth'].forEach(function (id) { el[id] = $(id); });
   SLIDERS.forEach(function (id) { el[id] = $(id); });
 
   var statusTimer = 0;
@@ -60,6 +60,19 @@
   var loadToken = 0;
   var stem = '', stemKey = '';
   var exportCtl = null;          // AbortController while a GIF is encoding
+  var srcVersion = 0;            // bumped whenever a new source is adopted
+  var revealCache = { key: '', R: null };
+  function revealOn() { return !el.reveal || el.reveal.checked; }
+  function sweepU(ph) { return -0.25 + 1.5 * (0.5 - 0.5 * Math.cos(2 * Math.PI * ph)); }   // tilt preview/GIF sweep, 0..1 in the middle
+  function getReveal() {
+    var inv = !!(el.invertDepth && el.invertDepth.checked);
+    var key = [srcVersion, P.strip, P.amp, P.scale, P.diag, P.angle, P.rgb, P.seed, inv].join('|');
+    if (revealCache.key !== key || !revealCache.R) {
+      revealCache.R = E.buildReveal(src, P, { invert: inv });
+      revealCache.key = key;
+    }
+    return revealCache.R;
+  }
 
   // ---- helpers ----
   function decimals(inp) {
@@ -98,11 +111,13 @@
   }
   // Name stem is fixed until params/source change, so PNG and depth share a stem.
   function currentStem() {
+    var rv = revealOn() && typeof E.buildReveal === 'function';
     var key = [P.level, P.seed, P.strip, P.amp, P.scale, P.diag, P.angle, P.rgb, P.spread,
-               P.layers, P.lscale, P.lop, P.blend, src ? src.width + 'x' + src.height : ''].join('|');
+               P.layers, P.lscale, P.lop, P.blend, rv, el.invertDepth && el.invertDepth.checked,
+               src ? src.width + 'x' + src.height : '', srcVersion].join('|');
     if (key !== stemKey || !stem) {
       stemKey = key;
-      stem = 'glitch_L' + (P.level || 'custom') + '_seed' + P.seed + '_' + stamp();
+      stem = (rv ? 'reveal_L' : 'glitch_L') + (P.level || 'custom') + '_seed' + P.seed + '_' + stamp();
     }
     return stem;
   }
@@ -132,7 +147,15 @@
       outObj = { data: imageData.data, width: src.width, height: src.height };
       el.out.width = src.width; el.out.height = src.height;
     }
-    var r = E.render(src, P, animOn ? phase : 0, outObj);
+    var r;
+    if (revealOn() && typeof E.simulateTilt === 'function') {
+      var R = getReveal();
+      var u = animOn ? sweepU(phase) : parseFloat(el.tilt ? el.tilt.value : 0);
+      if (animOn && el.tilt) { el.tilt.value = u.toFixed(2); showOut('tilt'); }
+      r = E.simulateTilt(R.image, R.depth, R.revealTilt * u, R.maxShift, outObj);
+    } else {
+      r = E.render(src, P, animOn ? phase : 0, outObj);
+    }
     if (r && r.data && r.data !== imageData.data) imageData.data.set(r.data);
     ctx.putImageData(imageData, 0, 0);
   }
@@ -145,6 +168,7 @@
     var w = srcCanvas.width, h = srcCanvas.height;
     var id = srcCanvas.getContext('2d').getImageData(0, 0, w, h);
     src = { data: id.data, width: w, height: h };
+    srcVersion++;
     imageData = null;
     if (el.amp) el.amp.max = Math.max(1, Math.round(w * 0.1));
     if (P.level > 0) {
@@ -233,20 +257,22 @@
   function savePng() {
     if (!src) return;
     var name = currentStem() + '.png';
-    var d = E.render(src, P, 0, null);   // phase 0, independent of animation state
+    var rv = revealOn() && typeof E.buildReveal === 'function';
+    var d = rv ? getReveal().image : E.render(src, P, 0, null);   // phase 0, independent of animation state
     canvasBlob(rgbaToCanvas(d)).then(function (b) {
       download(b, name);
-      setStatus('Saved ' + name + ' (' + d.width + 'x' + d.height + '). Also save the depth map to get the 3D effect.');
+      setStatus('Saved ' + name + ' (' + d.width + 'x' + d.height + '). ' + (rv ? 'Also save the depth map: the reveal needs both files.' : 'Also save the depth map to get the 3D effect.'));
     }).catch(function (e) { setStatus('PNG export failed: ' + e.message, 'error'); });
   }
   function saveDepth() {
     if (!src) return;
     if (typeof E.depthMap !== 'function') { setStatus('Depth map unavailable (engine too old).', 'error'); return; }
     var base = currentStem();
-    var d = E.depthMap(src.width, src.height, P);
+    var rv = revealOn() && typeof E.buildReveal === 'function';
+    var d = rv ? getReveal().depth : E.depthMap(src.width, src.height, P);
     canvasBlob(rgbaToCanvas(d)).then(function (b) {
       download(b, base + '_depth.png');
-      setStatus('Saved ' + base + '_depth.png. Save ' + base + '.png too and post both files together via the facebook.com web composer (white = near is UNCONFIRMED).');
+      setStatus('Saved ' + base + '_depth.png. Save ' + base + '.png too. On facebook.com post both files together; on iPhone the Facebook app needs depth embedded in the photo (a 2019 walkthrough used the DepthCam app). Polarity and tilt range are UNCONFIRMED: if the reveal appears on the wrong side, tick "Flip depth polarity" and re-export.', 'warn');
     }).catch(function (e) { setStatus('Depth export failed: ' + e.message, 'error'); });
   }
 
@@ -295,6 +321,10 @@
     gp.strip = Math.max(1, Math.round(P.strip * f));
     gp.amp = P.amp * f; gp.rgb = P.rgb * f; gp.scale = P.scale / f;
     var name = currentStem() + '.gif';
+    var gR = null;
+    if (revealOn() && typeof E.buildReveal === 'function') {   // tilt-sweep GIF that shows the reveal
+      gR = E.buildReveal(gsrc, gp, { invert: !!(el.invertDepth && el.invertDepth.checked) });
+    }
     exportCtl = (typeof AbortController === 'function') ? new AbortController() : null;
     setExporting(true);
     setStatus('Encoding GIF...');
@@ -303,6 +333,7 @@
     opts.signal = exportCtl ? exportCtl.signal : undefined;
     opts.width = dm.w; opts.height = dm.h;
     G.encode(function (i, n) {
+      if (gR) return E.simulateTilt(gR.image, gR.depth, gR.revealTilt * sweepU(i / n), gR.maxShift, null);
       return E.render(gsrc, gp, i / n, null);   // fresh buffer: gif.js caches sample frames
     }, opts, function (a, b) {
       if (el.gifProgress) el.gifProgress.value = Math.max(0, Math.min(1, a));
@@ -356,6 +387,9 @@
     if (el.animate) el.animate.checked = false;
     applyLevel(DEFAULT_LEVEL);
   });
+  if (el.tilt) el.tilt.addEventListener('input', function () { showOut('tilt'); markDirty(); });
+  if (el.reveal) el.reveal.addEventListener('change', function () { markDirty(); });
+  if (el.invertDepth) el.invertDepth.addEventListener('change', function () { markDirty(); });
   if (el.animate) el.animate.addEventListener('change', function () {
     animOn = el.animate.checked;
     if (animOn) t0 = performance.now(); else phase = 0;

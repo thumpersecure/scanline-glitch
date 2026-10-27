@@ -1,44 +1,60 @@
 # Scanline Displacement Glitch Lab
 
-A browser-based **scanline-displacement + RGB-offset glitch** tool. Upload a photo
-and pick an intensity **level 1–5** to make it look "off"; export a PNG, a
-companion depth map, or a looping GIF sized for micro.blog. Everything runs
-client-side — nothing is uploaded anywhere.
+A browser-based **scanline-displacement + RGB-offset glitch** tool with a **3D reveal**
+mode. Upload a photo and pick an intensity **level 1–5**. The exported image looks
+glitched as a flat picture, and a depth-parallax viewer at one tilt angle shifts every
+strip back so the original reappears. Also exports a depth map and a GIF sized for
+micro.blog. Everything runs client-side — nothing is uploaded anywhere.
 
 **▶ Live tool:** https://thumpersecure.github.io/scanline-glitch/
 
-## The idea
+## The idea: reveal mode (default)
 
-The posted photo should look glitched as a flat image. The experiment is whether
-Facebook's **3D Photo** conversion (depth parallax) pulls the strips back toward
-alignment when you tilt it. Be aware of what is and isn't known:
+Facebook / iOS "3D photos" fake parallax: they shift pixels sideways by their depth value
+as you tilt. Reveal mode runs that in reverse:
 
-- **Experimental / untested.** No public example of glitch art built to resolve
-  under Facebook 3D parallax was found. Expect a *partial* reveal at best.
-- Facebook either estimates depth itself (ML) or accepts a grayscale depth map
-  posted with the photo. The `<name>_depth` filename convention and "white = near"
-  come from third-party tutorials, **not Facebook docs — unconfirmed**, as are
-  size limits and whether the mobile app supports it. Test with one upload.
-- The synthetic depth ramp only helps if Facebook actually uses the exported map.
-  Otherwise its own ML depth will not match, and the reveal is approximate.
+1. Slice the image into strips and shift each one sideways (the glitch).
+2. Write a **depth map** where each strip's gray level encodes its exact shift.
+3. At one tilt angle the viewer shifts every strip back by that amount and the original
+   reappears. At the flat angle, and either side of the reveal angle, it stays displaced
+   and gets worse the further you go.
 
-## How the effect works
+The page has a **Tilt preview** slider that simulates this: `0` = the flat image you would
+post, `1.00` = the reveal. In the simulator the reconstruction is exact (mean difference
+0.000) when RGB offset is 0. The R/B colour fringe is not depth-driven, so with RGB offset
+on, a fringe stays at every angle by design.
 
-1. **Slice** the image into horizontal strips (`strip` px tall).
-2. **Displace** each strip horizontally by seeded noise(y) × `amp` plus a
-   centred depth ramp (`diag`) that grows with y.
-3. **RGB offset** — R and B shift in *opposite* directions (G stays put), scaled
-   by `rgb` px; this is the main "off" cue because parallax does not cancel it.
-4. **Layer** 1–4 passes at growing scale (`lscale`) and composite them.
+### What is and is not confirmed
 
-Displacement uses row copies with modulo wrap, so any shift size leaves no gaps.
+- **Confirmed here:** the pre-warp + depth-map math, in the simulator, from the exported
+  PNG + depth PNG alone (a viewer given only those two files recovers the original).
+- **Unconfirmed — test one real upload:**
+  - Whether Facebook uses *your* depth map instead of estimating depth itself. If it
+    estimates its own, the reveal will not line up.
+  - Polarity (white = near vs black = near — sources disagree; use **Flip depth polarity**
+    if the reveal appears on the wrong tilt side) and how far Facebook actually tilts
+    (the reveal angle depends on that scale).
+  - Delivery: on facebook.com the documented route is dragging `<name>.png` and
+    `<name>_depth.png` into the composer. On iPhone the Facebook app reads depth *embedded*
+    in the photo; a 2019 walkthrough used the DepthCam app to embed it. Neither is
+    confirmed for 2026. iOS Photos' own "Spatial Scene" estimates depth itself, so a
+    supplied map does not apply there.
+- Rows are edge-clamped (parallax cannot wrap pixels), so a sliver of at most the max
+  shift appears at the left/right edges.
+
+## How the glitch works
+
+1. **Slice** into horizontal strips (`strip` px tall).
+2. **Displace** each strip by seeded noise(y) × `amp` plus a centred depth ramp (`diag`).
+3. **RGB offset** — R and B shift in *opposite* directions, G stays put.
+4. *(classic mode only)* **Layer** 1–4 scaled passes and blend them. Scaled layers can't be
+   undone by parallax, so reveal mode uses a single layer with normal blending.
+
+Displacement uses row copies; any shift size leaves no gaps in classic mode.
 
 ## Levels 1–5
 
-Levels are pure intensity. They scale with image width (tuned at 1080 px), so a
-small image gets proportionally smaller shifts. All levels use normal blending —
-screen/difference/overlay made intensity stop rising on real photos, so those
-blends are left as manual options only.
+Pure intensity levels, scaled to image width (tuned at 1080 px). All use normal blending.
 
 | Level | Strip | Displacement | RGB offset | Layers | Opacity |
 |---|---|---|---|---|---|
@@ -48,59 +64,53 @@ blends are left as manual options only.
 | 4 | 12 | 2.5 % | 6 px | 3 | 0.6 |
 | 5 | 8 | 4.0 % | 10 px | 4 | 0.8 |
 
-Touching any slider switches to *custom*. The numbers are starting points, not
-validated against Facebook.
+(Layers/opacity apply to classic mode; reveal mode always renders one layer.) Touching a
+slider switches to *custom*. Level 5 shifts up to ~5 % of the width, which is probably more
+than a real 3D photo tilts, so the reveal may only be partial at high levels — calibrate
+with one upload.
 
 ## Exports
 
 | Button | Output |
 |---|---|
-| Download PNG | `glitch_L<level>_seed<n>_<timestamp>.png` at the working size |
-| Download depth map | `<same name>_depth.png`, same dimensions, grayscale, white = near |
-| Download GIF | seamless-loop animated GIF with progress, size estimate, and Cancel |
+| Download PNG | `reveal_L<level>_seed<n>_<timestamp>.png` (`glitch_…` in classic mode) |
+| Download depth map | `<same name>_depth.png`, same size, grayscale. In reveal mode each gray band is one strip's shift |
+| Export GIF | reveal mode: a looping **tilt sweep** that shows the reveal; classic mode: seamless noise loop |
 
-Large uploads are scaled to a 1080 px working width.
+Uploads are scaled to a 1080 px working width.
 
 ### GIF presets (micro.blog)
 
 | Preset | Width | Frames | Colors | Measured size |
 |---|---|---|---|---|
-| micro.blog | 640 px | 20 @ ~14 fps | 256, dithered | ~2.3–2.4 MB on a test photo |
+| micro.blog | 640 px | 20 @ ~14 fps | 256, dithered | ~1.4–2.5 MB on test photos |
 | Small | 400 px | 20 | 64 | ~0.4 MB |
 
-**micro.blog's real upload/size limits are unconfirmed** — these are conservative
-guesses (edit `PRESETS` in `gif.js`). The UI warns above 3 MB. Posting one test
-GIF is the only reliable check. Loops are seamless: noise is sampled on a circle,
-so frame 0 equals frame N.
+**micro.blog's real upload/size limits are unconfirmed** — conservative guesses (edit
+`PRESETS` in `gif.js`). The UI warns above 3 MB.
 
 ## Controls
 
 | Control | Effect |
 |---|---|
+| Reveal mode / Tilt preview / Flip polarity | 3D reveal and its simulator |
 | Level 1–5 | preset intensity |
-| Strip height | thickness of each displaced row |
-| Displacement | max horizontal shift (px) |
-| Noise scale | how fast displacement varies down the image |
-| Diagonal depth | strength of the centred depth ramp |
-| RGB offset / spread | channel split amount |
-| Layers / scale / opacity / blend | multi-pass compositing |
+| Strip height / Displacement / Noise scale / Diagonal depth | the slicing |
+| RGB offset / spread | channel split (set RGB to 0 for a clean reveal) |
+| Layers / scale / opacity / blend | classic mode only |
 | Seed | deterministic: same seed + settings = same image |
-| Animate | evolve over a 3 s loop |
+| Animate | reveal mode: sweeps the tilt; classic mode: evolves the noise |
 
 ## Architecture
 
-No build step, no CDN at runtime (p5.js was removed).
+No build step, no CDN at runtime.
 
 | File | Role |
 |---|---|
-| `engine.js` | pure, seeded typed-array renderer (browser + node) |
+| `engine.js` | pure seeded renderer, `buildReveal`, `simulateTilt` (browser + node) |
 | `gif.js` | GIF export; encoder vendored at `vendor/gifenc.esm.js` (gifenc 1.0.3) |
 | `app.js` | UI wiring, single `requestAnimationFrame` scheduler, downloads |
 | `index.html`, `style.css` | markup and responsive styles |
-
-Fixed in this rewrite: leaked canvases (every render), Animate never starting,
-unseeded noise (same seed gave a different image each load), and ~30k canvas
-calls per slider event.
 
 ## Run locally
 

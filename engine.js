@@ -98,6 +98,27 @@
     return LUTS[mode];
   }
 
+  // Per-strip signed shifts (px, unwrapped) for one layer. Shared by render() and
+  // buildReveal() so the glitch and the depth map that encodes it cannot disagree.
+  function stripShifts(p, w, h, strip, nStrips, cz, cw, lseed, rgbL, rawR, rawG, rawB) {
+    var amp = +p.amp || 0, scale = +p.scale || 0.01, diag = +p.diag || 0;
+    var angF = Math.sin((p.angle == null ? 90 : p.angle) * Math.PI / 180);
+    for (var s = 0; s < nStrips; s++) {
+      var yc = Math.min(h - 1, s * strip + strip / 2);
+      var ny = yc * scale;
+      var n1 = noise3(ny + cw, 0.5 + cz, 0.25, lseed) * 2 - 1;
+      var n2 = noise3(ny * 4 + 11.3 + cw, 7.7 + cz, 3.1, lseed) * 2 - 1;
+      var nn = clamp((0.7 * n1 + 0.3 * n2) * 1.5, -1, 1);
+      var depth = (yc / h - 0.5) * 2 * amp * diag * angF;
+      var base = nn * amp + depth;
+      var jit = 0.7 + 0.6 * noise3(ny * 2 + 31.7 + cw, 5.5 + cz, 9.9, lseed);
+      var off = rgbL * jit;
+      rawR[s] = Math.round(base + off);
+      rawG[s] = Math.round(base);
+      rawB[s] = Math.round(base - off);
+    }
+  }
+
   // ---- render ----------------------------------------------------------------
   var CIRCLE_R = 1.0; // radius of the phase circle in noise-lattice units
 
@@ -116,14 +137,13 @@
 
     var strip = clamp(Math.round(p.strip) || 1, 1, 1 << 20);
     var layers = clamp(Math.round(p.layers) || 1, 1, 4);
-    var amp = +p.amp || 0, scale = +p.scale || 0.01;
-    var diag = +p.diag || 0, rgb = +p.rgb || 0, spread = +p.spread || 0;
-    var angF = Math.sin((p.angle == null ? 90 : p.angle) * Math.PI / 180);
+    var rgb = +p.rgb || 0, spread = +p.spread || 0;
     var lscale = Math.max(1, +p.lscale || 1);
     var opi = Math.round(clamp(p.lop == null ? 1 : p.lop, 0, 1) * 256);
     var lut = getLut(p.blend || 'normal');
     var nStrips = Math.ceil(h / strip);
     var shR = new Int32Array(nStrips), shG = new Int32Array(nStrips), shB = new Int32Array(nStrips);
+    var rawR = new Int32Array(nStrips), rawG = new Int32Array(nStrips), rawB = new Int32Array(nStrips);
     var xm = new Int32Array(w);
     var cxm = (w - 1) / 2, cym = (h - 1) / 2;
 
@@ -132,20 +152,11 @@
       var lseed = (seed + Math.imul(li + 1, 0x9e3779b1)) | 0;
       var rgbL = rgb * (1 + spread * li);
 
+      stripShifts(p, w, h, strip, nStrips, cz, cw, lseed, rgbL, rawR, rawG, rawB);
       for (var s = 0; s < nStrips; s++) {
-        var yc = Math.min(h - 1, s * strip + strip / 2);
-        var ny = yc * scale;
-        var n1 = noise3(ny + cw, 0.5 + cz, 0.25, lseed) * 2 - 1;
-        var n2 = noise3(ny * 4 + 11.3 + cw, 7.7 + cz, 3.1, lseed) * 2 - 1;
-        var nn = clamp((0.7 * n1 + 0.3 * n2) * 1.5, -1, 1);
-        var depth = (yc / h - 0.5) * 2 * amp * diag * angF;
-        var base = nn * amp + depth;
-        var jit = 0.7 + 0.6 * noise3(ny * 2 + 31.7 + cw, 5.5 + cz, 9.9, lseed);
-        var off = rgbL * jit;
-        var rs = Math.round(base + off), gs = Math.round(base), bs = Math.round(base - off);
-        shR[s] = ((rs % w) + w) % w;
-        shG[s] = ((gs % w) + w) % w;
-        shB[s] = ((bs % w) + w) % w;
+        shR[s] = ((rawR[s] % w) + w) % w;
+        shG[s] = ((rawG[s] % w) + w) % w;
+        shB[s] = ((rawB[s] % w) + w) % w;
       }
       for (var x = 0; x < w; x++) {
         var xs = Math.round((x - cxm) / sc + cxm);
@@ -177,6 +188,84 @@
       }
     }
     return { data: data, width: w, height: h };
+  }
+
+  // ---- reveal mode: pre-warp so a depth-parallax viewer cancels the glitch ----
+  // Facebook / iOS 3D photos shift pixels sideways by (depth - neutral) as you tilt.
+  // buildReveal() makes the glitched image U plus a depth map D that encodes each
+  // strip's shift, so tilting the right amount shifts every strip back and the
+  // original reappears. Single layer only (scaled/blended layers can't be undone).
+  // Rows are edge-clamped, not wrapped: parallax can't wrap pixels around.
+  // The R/B colour fringe is NOT depth-driven, so it stays at every angle (rgb=0 for a clean reveal).
+  function buildReveal(src, p, opts) {
+    opts = opts || {};
+    var w = src.width, h = src.height, sd = src.data;
+    var ph = (opts.phase || 0); ph -= Math.floor(ph);
+    var cz = CIRCLE_R * Math.cos(2 * Math.PI * ph), cw = CIRCLE_R * Math.sin(2 * Math.PI * ph);
+    var seed = fmix((p.seed | 0) + 0x5bd1e995);
+    var lseed = (seed + Math.imul(1, 0x9e3779b1)) | 0;
+    var strip = clamp(Math.round(p.strip) || 1, 1, 1 << 20), nStrips = Math.ceil(h / strip);
+    var rawR = new Int32Array(nStrips), rawG = new Int32Array(nStrips), rawB = new Int32Array(nStrips);
+    stripShifts(p, w, h, strip, nStrips, cz, cw, lseed, +p.rgb || 0, rawR, rawG, rawB);
+    var smax = 1, s;
+    for (s = 0; s < nStrips; s++) smax = Math.max(smax, Math.abs(rawG[s]));
+    var sgn = opts.invert ? -1 : 1;
+    var img = new Uint8ClampedArray(w * h * 4), dep = new Uint8ClampedArray(w * h * 4);
+    for (var y = 0; y < h; y++) {
+      var si = (y / strip) | 0, sr = rawR[si], sg = rawG[si], sb = rawB[si];
+      var dv = 128 + sgn * Math.round(sg / smax * 127);
+      var rb = y * w;
+      for (var x = 0; x < w; x++) {
+        var tr = clamp(x - sr, 0, w - 1), tg = clamp(x - sg, 0, w - 1), tb = clamp(x - sb, 0, w - 1);
+        var o = (rb + x) * 4;
+        img[o] = sd[(rb + tr) * 4]; img[o + 1] = sd[(rb + tg) * 4 + 1]; img[o + 2] = sd[(rb + tb) * 4 + 2]; img[o + 3] = 255;
+        dep[o] = dep[o + 1] = dep[o + 2] = dv; dep[o + 3] = 255;
+      }
+    }
+    return {
+      image: { data: img, width: w, height: h },
+      depth: { data: dep, width: w, height: h },
+      maxShift: smax,
+      revealTilt: opts.invert ? 1 : -1   // tilt value t (see simulateTilt) at which the original reappears
+    };
+  }
+
+  // Stand-in for a depth-parallax viewer: moves each pixel sideways by
+  // t * maxShift * (depth - 128) / 127, far pixels drawn first, holes filled from the left.
+  // This is OUR model of the effect. Facebook's real scale/centre/polarity are unconfirmed.
+  function simulateTilt(img, depth, t, maxShift, out) {
+    var w = img.width, h = img.height, id = img.data, dd = depth.data, n = w * h * 4;
+    var data = (out && out.data && out.data.length === n) ? out.data : new Uint8ClampedArray(n);
+    var cnt = new Int32Array(257), order = new Int32Array(w), filled = new Uint8Array(w), holes = 0;
+    var k = t * maxShift / 127;
+    for (var y = 0; y < h; y++) {
+      var rb = y * w;
+      cnt.fill(0); filled.fill(0);
+      var x, d;
+      for (x = 0; x < w; x++) cnt[dd[(rb + x) * 4] + 1]++;
+      for (d = 1; d < 257; d++) cnt[d] += cnt[d - 1];
+      for (x = 0; x < w; x++) order[cnt[dd[(rb + x) * 4]]++] = x;
+      for (var i = 0; i < w; i++) {
+        x = order[i];
+        var nx = x + Math.round(k * (dd[(rb + x) * 4] - 128));
+        if (nx < 0 || nx >= w) continue;
+        var so = (rb + x) * 4, to = (rb + nx) * 4;
+        data[to] = id[so]; data[to + 1] = id[so + 1]; data[to + 2] = id[so + 2]; data[to + 3] = 255;
+        filled[nx] = 1;
+      }
+      var last = -1, first = -1;
+      for (x = 0; x < w; x++) if (filled[x]) { first = x; break; }
+      for (x = 0; x < w; x++) {
+        var o = (rb + x) * 4;
+        if (filled[x]) { last = x; continue; }
+        holes++;
+        var from = last >= 0 ? last : first;
+        if (from < 0) { data[o] = data[o + 1] = data[o + 2] = 0; data[o + 3] = 255; continue; }
+        var fo = (rb + from) * 4;
+        data[o] = data[fo]; data[o + 1] = data[fo + 1]; data[o + 2] = data[fo + 2]; data[o + 3] = 255;
+      }
+    }
+    return { data: data, width: w, height: h, holes: holes };
   }
 
   // ---- depth map ------------------------------------------------------------
@@ -248,6 +337,8 @@
     paramsFromLevel: paramsFromLevel,
     render: render,
     depthMap: depthMap,
+    buildReveal: buildReveal,
+    simulateTilt: simulateTilt,
     makeProceduralSource: makeProceduralSource,
     fitSize: fitSize
   };

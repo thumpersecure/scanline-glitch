@@ -17,7 +17,7 @@
 <meta name="twitter:description" content="Interactive scanline line-displacement glitch generator — tune every parameter in the browser.">
 <meta name="twitter:image" content="https://thumpersecure.github.io/scanline-glitch/og-image.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230b0d10'/%3E%3Crect y='4' width='16' height='2' fill='%235ad1ff'/%3E%3Crect x='3' y='8' width='13' height='2' fill='%23ff5a8a'/%3E%3Crect x='-2' y='12' width='14' height='2' fill='%235ad1ff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css?v=20261027">
+<link rel="stylesheet" href="style.css?v=20261027b">
 </head>
 <body>
 <noscript><p class="noscript">This tool needs JavaScript. Everything runs locally in your browser; nothing is uploaded.</p></noscript>
@@ -52,6 +52,16 @@
         <button type="button" data-level="5" aria-pressed="false">Level 5 (heavy)</button>
       </div>
       <p class="hint">Moving any slider below switches to custom settings.</p>
+    </div>
+
+    <div class="group">
+      <h2>3D reveal</h2>
+      <label class="check" for="reveal"><input type="checkbox" id="reveal" checked> Reveal mode (looks glitched until tilted)</label>
+      <label for="tilt">Tilt preview <output id="tiltOut" for="tilt">0.00</output></label>
+      <input type="range" id="tilt" min="-1" max="2" step="0.05" value="0">
+      <p class="hint">0 = the flat image as you would post it. 1.00 = the tilt where the original reappears. Either side of 1.00 it falls apart again. This is a simulation of depth parallax, not Facebook itself.</p>
+      <label class="check" for="invertDepth"><input type="checkbox" id="invertDepth"> Flip depth polarity (black = near)</label>
+      <p class="hint">If the reveal shows up when you tilt the other way on your phone, flip this and re-export. Reveal mode uses one layer and normal blending; the layer and blend sliders are ignored. Set RGB offset to 0 for a perfectly clean reveal.</p>
     </div>
 
     <div class="group">
@@ -116,7 +126,7 @@
         <button type="button" id="savePng" class="primary">Download PNG</button>
         <button type="button" id="saveDepth" class="secondary">Download depth map</button>
       </div>
-      <p class="hint">The depth map is saved as <code>&lt;name&gt;_depth.png</code> next to <code>&lt;name&gt;.png</code>, same dimensions.</p>
+      <p class="hint">The depth map is saved as <code>&lt;name&gt;_depth.png</code> next to <code>&lt;name&gt;.png</code>, same dimensions. In reveal mode each gray band encodes one strip's exact shift. In reveal mode the GIF is a tilt sweep that shows the reveal.</p>
       <label for="gifPreset">GIF preset</label>
       <select id="gifPreset">
         <option value="microblog" selected>micro.blog (conservative)</option>
@@ -138,12 +148,12 @@
     <li><b>Levels 1-5</b> are purely intensity levels. Level 1 is subtle (wide strips, tiny shifts, about 1 px of colour fringing at 1080 px wide, one layer). Level 5 is heavy (thin strips, large shifts, about 10 px fringing, four layered passes). In between, strips narrow, shifts grow, fringing scales linearly and more layers blend in. Any slider you touch switches to custom settings.</li>
     <li><b>Slice and displace.</b> The image is cut into horizontal strips. Each strip is shifted sideways by smooth noise of its row, wrapping around so there are no gaps.</li>
     <li><b>RGB offsets.</b> Red and blue are shifted in opposite directions while green stays put, giving the colour fringing. Offsets scale with image width.</li>
-    <li><b>Depth-keyed displacement.</b> A diagonal ramp adds a shift that grows steadily from the top of the frame to the bottom, mimicking a depth gradient. The depth map download uses the same ramp, so the shift and the depth agree.</li>
-    <li><b>Layer.</b> One to four passes are rendered at increasing scale and blended, which adds the woven interference texture.</li>
+    <li><b>Reveal mode.</b> A depth-parallax viewer shifts pixels sideways by their depth value as you tilt. Reveal mode pre-shifts every strip the opposite way and writes a depth map where each strip's gray level encodes its exact shift. At one tilt angle the viewer shifts every strip back and the original reappears. At the flat angle and on either side it stays displaced, and it gets worse the further you go. In the preview this reconstructs exactly when RGB offset is 0; the colour fringe is not depth-driven so it stays at every angle.</li>
+    <li><b>Layer (normal mode only).</b> Outside reveal mode, one to four passes are rendered at increasing scale and blended, which adds the woven interference texture. Scaled layers cannot be undone by parallax, so reveal mode uses a single layer.</li>
   </ol>
 
   <h3>The Facebook 3D photo idea (experimental, unconfirmed)</h3>
-  <p>The goal is an image that looks "off" as a flat picture and resolves more fully once Facebook turns it into a 3D photo. <b>This is an experiment.</b> How Facebook handles depth, and the convention of uploading a companion file named <code>&lt;name&gt;_depth</code> alongside <code>&lt;name&gt;</code>, come from third-party tutorials. Neither is confirmed by Facebook, and either may change or not work for you. Expect only a partial reveal. Try one upload first before you rely on it.</p>
+  <p>The goal is an image that looks "off" as a flat picture and resolves once it is viewed as a 3D photo at one tilt angle. <b>This is an experiment.</b> The preview slider simulates depth parallax; it does not prove what Facebook will do. How Facebook handles depth comes from third-party tutorials and is unconfirmed: on the facebook.com composer you drag in <code>&lt;name&gt;.png</code> plus <code>&lt;name&gt;_depth.png</code>; on iPhone the Facebook app reads depth embedded in the photo, which a 2019 walkthrough did with an app called DepthCam. Polarity (white = near or black = near), how far Facebook tilts, and whether it uses your map at all are unknown. If Facebook estimates depth itself, the reveal will not line up. Test one upload and use the polarity switch if the reveal appears on the wrong side.</p>
 
   <h3>GIF and micro.blog</h3>
   <p>The GIF export loops seamlessly and uses one shared palette. micro.blog's actual size and dimension limits are unconfirmed, so the micro.blog preset is deliberately conservative (smaller width, few frames, modest file size). The size readout warns when the estimate is large. The PNG is exported at the working size, capped at 1080 px wide.</p>
@@ -154,8 +164,8 @@
   <p class="repo"><a id="repolink" href="https://github.com/thumpersecure/scanline-glitch">Source on GitHub</a> &middot; MIT licensed</p>
 </section>
 
-<script src="engine.js?v=20261027"></script>
-<script src="gif.js?v=20261027"></script>
-<script src="app.js?v=20261027"></script>
+<script src="engine.js?v=20261027b"></script>
+<script src="gif.js?v=20261027b"></script>
+<script src="app.js?v=20261027b"></script>
 </body>
 </html>
