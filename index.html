@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Scanline Displacement Glitch Lab</title>
 <meta name="description" content="Interactive scanline / line-displacement glitch generator. Slice, displace, RGB-split and layer any image in the browser. Tune every parameter and export a PNG.">
 <meta property="og:title" content="Scanline Displacement Glitch Lab">
@@ -16,85 +16,118 @@
 <meta name="twitter:title" content="Scanline Displacement Glitch Lab">
 <meta name="twitter:description" content="Interactive scanline line-displacement glitch generator — tune every parameter in the browser.">
 <meta name="twitter:image" content="https://thumpersecure.github.io/scanline-glitch/og-image.png">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
-<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230b0d10'/%3E%3Crect y='4' width='16' height='2' fill='%235ad1ff'/%3E%3Crect x='3' y='8' width='13' height='2' fill='%23ff5a8a'/%3E%3Crect x='-2' y='12' width='14' height='2' fill='%235ad1ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css?v=20261027">
 </head>
 <body>
+<noscript><p class="noscript">This tool needs JavaScript. Everything runs locally in your browser; nothing is uploaded.</p></noscript>
 <header>
   <h1>Scanline Displacement Glitch Lab</h1>
-  <p class="sub">Horizontal line-displacement glitch — slice into strips, shift each strip by noise + a diagonal depth gradient, split RGB channels, then layer passes. Everything runs in your browser. <a href="#how">How it works ↓</a></p>
+  <p class="sub">Slice a photo into horizontal strips, shift each strip by noise plus a depth-like ramp, split the RGB channels and layer passes. Pick an intensity level 1-5, or tune every parameter. Runs entirely in your browser. <a href="#how">How it works</a></p>
 </header>
 
 <main>
-  <div id="canvas-wrap"></div>
+  <div id="dropzone" tabindex="-1">
+    <canvas id="out" width="900" height="600" role="img" aria-label="Glitched image preview. Drop an image here to replace the source."></canvas>
+    <p class="hint">Drop an image onto the preview, or use Upload below.</p>
+  </div>
+  <p id="status" role="status" aria-live="polite"></p>
 
-  <section id="controls">
+  <section id="controls" aria-label="Controls">
     <div class="group">
       <h2>Source</h2>
-      <label class="file">
-        <span>Upload image</span>
-        <input type="file" id="fileInput" accept="image/*">
-      </label>
-      <button id="genNoise" class="secondary">Generate noise source</button>
+      <label class="file" for="fileInput">Upload image</label>
+      <input type="file" id="fileInput" accept="image/*">
+      <button type="button" id="genSource" class="secondary">Generate procedural source</button>
       <p class="hint">No image? Generate a procedural source and glitch that.</p>
     </div>
 
     <div class="group">
+      <h2>Intensity level</h2>
+      <div id="levels" role="group" aria-label="Intensity level">
+        <button type="button" data-level="1" aria-pressed="false">Level 1 (subtle)</button>
+        <button type="button" data-level="2" aria-pressed="false">Level 2</button>
+        <button type="button" data-level="3" aria-pressed="false">Level 3</button>
+        <button type="button" data-level="4" aria-pressed="false">Level 4</button>
+        <button type="button" data-level="5" aria-pressed="false">Level 5 (heavy)</button>
+      </div>
+      <p class="hint">Moving any slider below switches to custom settings.</p>
+    </div>
+
+    <div class="group">
       <h2>Slicing</h2>
-      <label>Strip height <output id="stripOut">2</output> px
-        <input type="range" id="strip" min="1" max="16" step="1" value="2"></label>
-      <label>Displacement amount <output id="ampOut">40</output> px
-        <input type="range" id="amp" min="0" max="200" step="1" value="40"></label>
-      <label>Noise scale <output id="scaleOut">0.010</output>
-        <input type="range" id="scale" min="0.001" max="0.08" step="0.001" value="0.01"></label>
+      <label for="strip">Strip height <output id="stripOut" for="strip">16</output> px</label>
+      <input type="range" id="strip" min="1" max="32" step="1" value="16">
+      <label for="amp">Displacement amount <output id="ampOut" for="amp">16</output> px</label>
+      <input type="range" id="amp" min="0" max="108" step="1" value="16">
+      <label for="scale">Noise scale <output id="scaleOut" for="scale">0.010</output></label>
+      <input type="range" id="scale" min="0.002" max="0.05" step="0.001" value="0.01">
     </div>
 
     <div class="group">
-      <h2>Diagonal depth set</h2>
-      <label>Diagonal strength <output id="diagOut">0.6</output>
-        <input type="range" id="diag" min="0" max="1" step="0.01" value="0.6"></label>
-      <label>Diagonal angle <output id="angleOut">45</output>°
-        <input type="range" id="angle" min="-90" max="90" step="1" value="45"></label>
+      <h2>Diagonal depth ramp</h2>
+      <label for="diag">Ramp strength <output id="diagOut" for="diag">0.20</output></label>
+      <input type="range" id="diag" min="0" max="1" step="0.01" value="0.2">
+      <label for="angle">Ramp angle <output id="angleOut" for="angle">45</output>&deg;</label>
+      <input type="range" id="angle" min="0" max="90" step="1" value="45">
     </div>
 
     <div class="group">
-      <h2>RGB split (muted RBG lines)</h2>
-      <label>Channel offset <output id="rgbOut">6</output> px
-        <input type="range" id="rgb" min="0" max="40" step="1" value="6"></label>
-      <label>Channel spread <output id="spreadOut">1.0</output>
-        <input type="range" id="spread" min="0" max="3" step="0.1" value="1.0"></label>
+      <h2>RGB split</h2>
+      <label for="rgb">Channel offset <output id="rgbOut" for="rgb">4</output> px</label>
+      <input type="range" id="rgb" min="0" max="40" step="0.1" value="4">
+      <label for="spread">Channel spread <output id="spreadOut" for="spread">1.0</output></label>
+      <input type="range" id="spread" min="0" max="3" step="0.05" value="1">
     </div>
 
     <div class="group">
       <h2>Layering</h2>
-      <label>Layers <output id="layersOut">3</output>
-        <input type="range" id="layers" min="1" max="4" step="1" value="3"></label>
-      <label>Layer scale (1 → 2×) <output id="lscaleOut">1.5</output>
-        <input type="range" id="lscale" min="1" max="2" step="0.05" value="1.5"></label>
-      <label>Layer opacity <output id="lopOut">0.5</output>
-        <input type="range" id="lop" min="0.1" max="1" step="0.05" value="0.5"></label>
-      <label>Blend mode
-        <select id="blend">
-          <option value="screen">screen</option>
-          <option value="lighter" selected>add / lighter</option>
-          <option value="difference">difference</option>
-          <option value="overlay">overlay</option>
-          <option value="multiply">multiply</option>
-        </select></label>
+      <label for="layers">Layers <output id="layersOut" for="layers">2</output></label>
+      <input type="range" id="layers" min="1" max="4" step="1" value="2">
+      <label for="lscale">Layer scale (1 to 2&times;) <output id="lscaleOut" for="lscale">1.5</output></label>
+      <input type="range" id="lscale" min="1" max="2" step="0.01" value="1.5">
+      <label for="lop">Layer opacity <output id="lopOut" for="lop">0.7</output></label>
+      <input type="range" id="lop" min="0.1" max="1" step="0.05" value="0.7">
+      <label for="blend">Blend mode</label>
+      <select id="blend">
+        <option value="normal">normal</option>
+        <option value="screen" selected>screen</option>
+        <option value="add">add</option>
+        <option value="difference">difference</option>
+        <option value="overlay">overlay</option>
+        <option value="multiply">multiply</option>
+      </select>
     </div>
 
     <div class="group">
-      <h2>Seed & output</h2>
-      <label>Seed <output id="seedOut">216</output>
-        <input type="range" id="seed" min="0" max="999" step="1" value="216"></label>
+      <h2>Seed</h2>
+      <label for="seed">Seed <output id="seedOut" for="seed">216</output></label>
+      <input type="range" id="seed" min="0" max="999" step="1" value="216">
       <div class="row">
-        <button id="reroll">Reroll seed 🎲</button>
-        <button id="reset" class="secondary">Reset</button>
+        <button type="button" id="reroll">Reroll seed</button>
+        <button type="button" id="reset" class="secondary">Reset</button>
       </div>
+      <label class="check" for="animate"><input type="checkbox" id="animate"> Animate (loops seamlessly)</label>
+    </div>
+
+    <div class="group">
+      <h2>Export</h2>
       <div class="row">
-        <button id="save" class="primary">Download PNG</button>
+        <button type="button" id="savePng" class="primary">Download PNG</button>
+        <button type="button" id="saveDepth" class="secondary">Download depth map</button>
       </div>
-      <label class="check"><input type="checkbox" id="animate"> Animate (evolve over time)</label>
+      <p class="hint">The depth map is saved as <code>&lt;name&gt;_depth.png</code> next to <code>&lt;name&gt;.png</code>, same dimensions.</p>
+      <label for="gifPreset">GIF preset</label>
+      <select id="gifPreset">
+        <option value="microblog" selected>micro.blog (conservative)</option>
+        <option value="small">Small</option>
+      </select>
+      <div class="row">
+        <button type="button" id="saveGif" class="primary">Export GIF</button>
+        <button type="button" id="gifCancel" class="secondary">Cancel</button>
+      </div>
+      <progress id="gifProgress" max="1" value="0" aria-label="GIF export progress"></progress>
+      <p id="gifInfo" class="hint"></p>
     </div>
   </section>
 </main>
@@ -102,15 +135,27 @@
 <section id="how">
   <h2>How this works</h2>
   <ol>
-    <li><b>Slice</b> — the source is cut into thin horizontal strips (<i>strip height</i>).</li>
-    <li><b>Displace</b> — each strip shifts horizontally by <code>noise(y) × amount</code> plus a <b>diagonal depth gradient</b> so displacement ramps across the frame instead of jittering randomly.</li>
-    <li><b>RGB split</b> — the R, G and B channels are drawn at slightly different offsets per strip, giving the muted colour fringing.</li>
-    <li><b>Layer</b> — 1–4 passes are rendered at increasing scales (1→2×) and blended, producing the woven interference texture.</li>
+    <li><b>Levels 1-5</b> are purely intensity levels. Level 1 is subtle (wide strips, tiny shifts, about 1 px of colour fringing at 1080 px wide, one layer). Level 5 is heavy (thin strips, large shifts, about 10 px fringing, four layered passes). In between, strips narrow, shifts grow, fringing scales linearly and more layers blend in. Any slider you touch switches to custom settings.</li>
+    <li><b>Slice and displace.</b> The image is cut into horizontal strips. Each strip is shifted sideways by smooth noise of its row, wrapping around so there are no gaps.</li>
+    <li><b>RGB offsets.</b> Red and blue are shifted in opposite directions while green stays put, giving the colour fringing. Offsets scale with image width.</li>
+    <li><b>Depth-keyed displacement.</b> A diagonal ramp adds a shift that grows steadily from the top of the frame to the bottom, mimicking a depth gradient. The depth map download uses the same ramp, so the shift and the depth agree.</li>
+    <li><b>Layer.</b> One to four passes are rendered at increasing scale and blended, which adds the woven interference texture.</li>
   </ol>
-  <p>Each <i>seed</i> is one “experiment.” Change parameters + seed to explore the space, then <b>Download PNG</b>. All processing is client-side — nothing is uploaded.</p>
-  <p class="repo"><a id="repolink" href="https://github.com/thumpersecure/scanline-glitch">Source on GitHub</a> · MIT licensed · built with <a href="https://p5js.org">p5.js</a></p>
+
+  <h3>The Facebook 3D photo idea (experimental, unconfirmed)</h3>
+  <p>The goal is an image that looks "off" as a flat picture and resolves more fully once Facebook turns it into a 3D photo. <b>This is an experiment.</b> How Facebook handles depth, and the convention of uploading a companion file named <code>&lt;name&gt;_depth</code> alongside <code>&lt;name&gt;</code>, come from third-party tutorials. Neither is confirmed by Facebook, and either may change or not work for you. Expect only a partial reveal. Try one upload first before you rely on it.</p>
+
+  <h3>GIF and micro.blog</h3>
+  <p>The GIF export loops seamlessly and uses one shared palette. micro.blog's actual size and dimension limits are unconfirmed, so the micro.blog preset is deliberately conservative (smaller width, few frames, modest file size). The size readout warns when the estimate is large. The PNG is exported at the working size, capped at 1080 px wide.</p>
+
+  <h3>Privacy</h3>
+  <p>All processing is client-side. Your image never leaves your device and nothing is uploaded.</p>
+
+  <p class="repo"><a id="repolink" href="https://github.com/thumpersecure/scanline-glitch">Source on GitHub</a> &middot; MIT licensed</p>
 </section>
 
-<script src="sketch.js"></script>
+<script src="engine.js?v=20261027"></script>
+<script src="gif.js?v=20261027"></script>
+<script src="app.js?v=20261027"></script>
 </body>
 </html>
